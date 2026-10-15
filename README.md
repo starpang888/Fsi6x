@@ -127,7 +127,7 @@ modules:
     id: event_binder
     args:
       - modules: '{{"fsi6x", fsi6x}, {"cmd", cmd}}'
-      - event_binding_groups: '{{{{"fsi6x", Fsi6x::SwitchPos::FSI6X_SW_L_POS_MID, "cmd", CMD::Mode::CMD_OP_CTRL}, {"fsi6x", Fsi6x::SwitchPos::FSI6X_SW_L_POS_BOT, "cmd", CMD::Mode::CMD_AUTO_CTRL}}}}'
+      - event_binding_groups: '{{{{"fsi6x", Fsi6x::SwitchPos::FSI6X_SW_L_POS_TOP, "cmd", CMD::Mode::CMD_OP_CTRL}, {"fsi6x", Fsi6x::SwitchPos::FSI6X_SW_L_POS_BOT, "cmd", CMD::Mode::CMD_AUTO_CTRL}}}}'
 ```
 
 ## 6. 依赖与硬件 / Dependencies and Hardware
