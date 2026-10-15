@@ -4,7 +4,7 @@
 /* === MODULE MANIFEST V2 ===
 module_description: FS-i6X 遥控接收机 SBUS 解析模块：从 UART 接收 iA6B 的 SBUS 帧，解析通道与拨杆，转换为 CMD 控制数据并发出拨杆事件 / Module that parses FS-i6X plus iA6B SBUS frames from a UART, extracts channels and switches, converts them to CMD control data and emits switch events
 depends:
-- id: QDU-Robomaster/CMD
+- id: starpang888/CMD
   ref: same-or-dev
 === END MANIFEST === */
 // clang-format on
@@ -205,7 +205,7 @@ class Fsi6x
         if (fsi6x->ParseSBUS(rx_buffer, rc_data) == LibXR::ErrorCode::OK)
         {
           fsi6x->last_time_ = LibXR::Timebase::GetMilliseconds();
-          fsi6x->cmd_->FeedRC(CMD::RCInputSource::RC_INPUT_DR16, rc_data);
+          fsi6x->cmd_->FeedRC(CMD::RCInputSource::RC_INPUT_FSI6X, rc_data);
         }
         else
         {
@@ -346,7 +346,7 @@ class Fsi6x
     cmd_data_.gimbal_online = false;
     cmd_data_.ctrl_source = CMD::ControlSource::CTRL_SOURCE_RC;
 
-    cmd_->FeedRC(CMD::RCInputSource::RC_INPUT_DR16, cmd_data_);
+    cmd_->FeedRC(CMD::RCInputSource::RC_INPUT_FSI6X, cmd_data_);
   }
 
  private:
