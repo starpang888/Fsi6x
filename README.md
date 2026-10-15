@@ -19,6 +19,8 @@ FS-i6X 遥控接收机 SBUS 解析模块：从 UART 接收 iA6B 的 SBUS 帧，�
 - SWA（两档）→ 左拨杆：`FSI6X_SW_L_POS_TOP`（0，高位）、`FSI6X_SW_L_POS_BOT`（1，低位）、`FSI6X_SW_L_POS_MID`（2，中位，两档时不会出现）。
 - SWC（三档）→ 右拨杆：`FSI6X_SW_R_POS_TOP`（3）、`FSI6X_SW_R_POS_BOT`（4）、`FSI6X_SW_R_POS_MID`（5）。
 
+事件跟**物理位置**走，与拨杆的档位等级（`SBUSData::sw`）无关：SWC 物理上位发 `FSI6X_SW_R_POS_TOP`、物理下位发 `FSI6X_SW_R_POS_BOT`。这与原 DR16 的右拨杆语义一致，绑定配置可以照搬。
+
 事件只在档位**发生变化**时触发，且首帧只记录状态不触发，避免上电瞬间误切模式。
 
 `GetSBUSData()` 返回最近一帧的原始数据（`SBUSData`），供应用层读取 SWB、SWD 与两个旋钮。
@@ -38,6 +40,8 @@ The four stick channels are normalized to [-1, 1] using the measured travel of 2
 - SWA (two positions) to the left switch: `FSI6X_SW_L_POS_TOP` (0, high), `FSI6X_SW_L_POS_BOT` (1, low), `FSI6X_SW_L_POS_MID` (2, middle, which a two-position switch never reaches).
 - SWC (three positions) to the right switch: `FSI6X_SW_R_POS_TOP` (3), `FSI6X_SW_R_POS_BOT` (4), `FSI6X_SW_R_POS_MID` (5).
 
+The events follow the **physical position** and are independent of the switch level (`SBUSData::sw`): the physical up position of the SWC activates `FSI6X_SW_R_POS_TOP` and the physical down position `FSI6X_SW_R_POS_BOT`. This matches the right switch of the original DR16, so binding configurations carry over.
+
 An event is activated only when the position **changes**, and the first frame only records state without activating anything, so power-up cannot switch modes spuriously.
 
 `GetSBUSData()` returns the raw data of the latest frame (`SBUSData`), for the application layer to read SWB, SWD and the two knobs.
@@ -52,20 +56,20 @@ An event is activated only when the position **changes**, and the first frame on
 | `ch[1]` | CH2 | 右摇杆上下 | 上为高位，下为低位 |
 | `ch[2]` | CH3 | 左摇杆上下 | 上为高位，下为低位 |
 | `ch[3]` | CH4 | 左摇杆左右 | 右为高位，左为低位 |
-| `ch[4]` | CH5 | SWC，三档 | 240 / 1024 / 1807 |
-| `ch[5]` | CH6 | SWA，两档 | 240 / 1807 |
-| `ch[6]` | CH7 | SWB，两档 | 240 / 1807 |
-| `ch[7]` | CH8 | SWD，两档 | 240 / 1807 |
+| `ch[4]` | CH5 | SWC，三档 | 240 / 1024 / 1807，下 / 中 / 上分别为高 / 中 / 低 |
+| `ch[5]` | CH6 | SWA，两档 | 240 / 1807，下 / 上分别为低 / 高 |
+| `ch[6]` | CH7 | SWB，两档 | 240 / 1807，下 / 上分别为低 / 高 |
+| `ch[7]` | CH8 | SWD，两档 | 240 / 1807，下 / 上分别为低 / 高 |
 | `ch[8]` | CH9 | VRA 旋钮 | 240 至 1807，顺时针增加 |
 | `ch[9]` | CH10 | VRB 旋钮 | 240 至 1807，顺时针增加 |
 
-`SBUSData::ch` 保存上表的**原始值**，`SBUSData::sw[0..3]` 依次为 SWA、SWB、SWC、SWD 的档位（`-1` 低位、`0` 中位、`1` 高位，判定死区为 ±200）。
+`SBUSData::ch` 保存上表的**原始值**。`SBUSData::sw[0..3]` 依次为 SWA、SWB、SWC、SWD 的档位等级（`-1` 低位、`0` 中位、`1` 高位，判定死区为 ±200）；SWC 的等级与物理位置相反（物理下位是高档），其余三个一致。事件按物理位置发，不受这里的等级影响。
 
 需要用不同的辅助通道配置时，改 `Fsi6x.hpp` 顶部的 `FSI6X_CH_*` 常量与 `ChannelIndex` 枚举即可，位解析部分不用动。
 
 With the auxiliary channels configured as above, the SBUS bit packing lines up with the channel list.
 
-`SBUSData::ch` holds the **raw** values of the table above, and `SBUSData::sw[0..3]` holds the positions of SWA, SWB, SWC and SWD in that order (`-1` low, `0` middle, `1` high, with a dead band of ±200).
+`SBUSData::ch` holds the **raw** values of the table above. `SBUSData::sw[0..3]` holds the levels of SWA, SWB, SWC and SWD in that order (`-1` low, `0` middle, `1` high, with a dead band of ±200); the SWC level is opposite to its physical position (the physical down position is the high level) while the three other switches agree with theirs. Events follow the physical position and are unaffected by these levels.
 
 To use a different auxiliary channel assignment, change the `FSI6X_CH_*` constants and the `ChannelIndex` enumerator at the top of `Fsi6x.hpp`; the bit unpacking needs no change.
 

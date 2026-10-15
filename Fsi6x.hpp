@@ -120,8 +120,13 @@ class Fsi6x
   {
     int16_t ch[FSI6X_CH_NUM];  ///< CH1 至 CH10 原始值，中位约 1024
                                ///< Raw CH1 to CH10 values, middle around 1024
-    int8_t sw[FSI6X_SW_NUM];   ///< SWA、SWB、SWC、SWD 档位，取 -1、0 或 1
-                               ///< SWA, SWB, SWC and SWD positions, -1, 0 or 1
+    int8_t sw[FSI6X_SW_NUM];   ///< SWA、SWB、SWC、SWD 的档位等级，取 -1、0 或 1；
+                               ///< SWC 的等级与物理位置相反（下位为 1），其余三个
+                               ///< 一致（下位为 -1）
+                               ///< Level of SWA, SWB, SWC and SWD, -1, 0 or 1; the
+                               ///< SWC level is opposite to its physical position
+                               ///< (down is 1) while the three other switches agree
+                               ///< with it (down is -1)
     uint8_t frame_lost;        ///< SBUS 丢帧标志 SBUS frame lost flag
     uint8_t failsafe;          ///< SBUS 失控标志 SBUS failsafe flag
   };
@@ -268,11 +273,10 @@ class Fsi6x
     curr_sbus.ch[FSI6X_CH_VRB] =
         static_cast<int16_t>(((raw_data[13] >> 3) | (raw_data[14] << 5)) & 0x07FF);
 
-    static constexpr ChannelIndex SWITCH_CHANNEL[FSI6X_SW_NUM] = {
-        FSI6X_CH_SWA, FSI6X_CH_SWB, FSI6X_CH_SWC, FSI6X_CH_SWD};
     for (uint8_t i = 0; i < FSI6X_SW_NUM; i++)
     {
-      curr_sbus.sw[i] = ToSwitchLevel(curr_sbus.ch[SWITCH_CHANNEL[i]]);
+      const int8_t level = ToSwitchLevel(curr_sbus.ch[SWITCH_CHANNEL[i]]);
+      curr_sbus.sw[i] = SWITCH_INVERTED[i] ? static_cast<int8_t>(-level) : level;
     }
 
     curr_sbus.frame_lost = static_cast<uint8_t>((raw_data[23] >> 2) & 0x01);
@@ -290,13 +294,15 @@ class Fsi6x
     {
       if (curr_sbus.sw[FSI6X_SW_A] != this->last_sbus_.sw[FSI6X_SW_A])
       {
-        this->fsi6x_event_.Active(
-            SwitchEventId(SwitchPos::FSI6X_SW_L_POS_TOP, curr_sbus.sw[FSI6X_SW_A]));
+        this->fsi6x_event_.Active(SwitchEventId(
+            SwitchPos::FSI6X_SW_L_POS_TOP,
+            ToPhysicalLevel(FSI6X_SW_A, curr_sbus.sw[FSI6X_SW_A])));
       }
       if (curr_sbus.sw[FSI6X_SW_C] != this->last_sbus_.sw[FSI6X_SW_C])
       {
-        this->fsi6x_event_.Active(
-            SwitchEventId(SwitchPos::FSI6X_SW_R_POS_TOP, curr_sbus.sw[FSI6X_SW_C]));
+        this->fsi6x_event_.Active(SwitchEventId(
+            SwitchPos::FSI6X_SW_R_POS_TOP,
+            ToPhysicalLevel(FSI6X_SW_C, curr_sbus.sw[FSI6X_SW_C])));
       }
     }
     this->last_sbus_ = curr_sbus;
@@ -384,15 +390,17 @@ class Fsi6x
   }
 
   /**
-   * @brief 按死区把通道原始值判定为拨杆档位。
-   *        Turn a raw channel value into a switch position, using a dead band.
+   * @brief 按死区把通道原始值判定为拨杆的**物理**位置，四个拨杆用同一条规则。
+   *        Turn a raw channel value into the **physical** position of a switch, with
+   *        the same rule for all four switches.
    *
    * @param value 通道原始值。
    *              Raw channel value.
-   * @return `-1` 低位、`0` 中位或 `1` 高位。
-   *         `-1` low, `0` middle or `1` high.
+   * @return 物理下位 `-1`、中位 `0`、物理上位 `1`。
+   *         `-1` for the physical down position, `0` for the middle and `1` for the
+   *         physical up position.
    */
-  static int8_t ToSwitchLevel(int16_t value)
+  static constexpr int8_t ToSwitchLevel(int16_t value)
   {
     if (value > FSI6X_CH_VALUE_MID + FSI6X_SW_DEADBAND)
     {
@@ -406,18 +414,56 @@ class Fsi6x
   }
 
   /**
-   * @brief 由拨杆档位计算事件 ID：高位、低位、中位依次对应基准 ID 加 0、1、2。
-   *        Compute the event ID from a switch position: high, low and middle map to the
-   *        base ID plus 0, 1 and 2.
+   * @brief SWA、SWB、SWC、SWD 对应的辅助通道下标，次序与 `SBUSData::sw` 一致。
+   *        Auxiliary channel index of SWA, SWB, SWC and SWD, in the order of
+   *        `SBUSData::sw`.
+   */
+  static constexpr ChannelIndex SWITCH_CHANNEL[FSI6X_SW_NUM] = {
+      FSI6X_CH_SWA, FSI6X_CH_SWB, FSI6X_CH_SWC, FSI6X_CH_SWD};
+
+  /**
+   * @brief 拨杆的档位等级是否与物理位置相反。FS-i6X 上 SWC 恰好与其余三个拨杆反接：
+   *        物理下位对应高档，物理上位对应低档。
+   *        Whether the switch level is opposite to its physical position. On the
+   *        FS-i6X the SWC is wired the other way round from the three other switches:
+   *        the physical down position is the high level, the physical up position the
+   *        low level.
+   */
+  static constexpr bool SWITCH_INVERTED[FSI6X_SW_NUM] = {false, false, true, false};
+
+  /**
+   * @brief 把 `SBUSData::sw` 中存档的档位等级还原成物理位置：事件按物理位置发，所以
+   *        SWC 要多取一次反，其余拨杆不变。
+   *        Recover the physical position from the switch level stored in
+   *        `SBUSData::sw`: events follow the physical position, so the SWC is negated
+   *        once more and the other switches are left alone.
    *
-   * @param base 该拨杆高位的基准事件 ID。
-   *             Base event ID of the switch high position.
-   * @param level 拨杆档位。
-   *              Switch position.
+   * @param index 拨杆下标。
+   *              Switch index.
+   * @param level 存档的档位等级。
+   *              Stored switch level.
+   * @return 与物理位置一致的档位：`-1` 下位、`0` 中位、`1` 上位。
+   *         Level matching the physical position: `-1` down, `0` middle, `1` up.
+   */
+  static constexpr int8_t ToPhysicalLevel(uint8_t index, int8_t level)
+  {
+    return SWITCH_INVERTED[index] ? static_cast<int8_t>(-level) : level;
+  }
+
+  /**
+   * @brief 由拨杆的**物理**位置计算事件 ID：上位、下位、中位依次对应基准 ID 加 0、
+   *        1、2。
+   *        Compute the event ID from the **physical** position of a switch: up, down
+   *        and middle map to the base ID plus 0, 1 and 2.
+   *
+   * @param base 该拨杆物理上位的基准事件 ID。
+   *             Base event ID of the physical up position of the switch.
+   * @param level 拨杆的物理位置，见 `ToPhysicalLevel`。
+   *              Physical position of the switch, see `ToPhysicalLevel`.
    * @return 事件 ID。
    *         Event ID.
    */
-  static uint32_t SwitchEventId(SwitchPos base, int8_t level)
+  static constexpr uint32_t SwitchEventId(SwitchPos base, int8_t level)
   {
     if (level > FSI6X_SW_LEVEL_MID)
     {
